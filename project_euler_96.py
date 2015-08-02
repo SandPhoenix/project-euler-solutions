@@ -1,7 +1,9 @@
 import math
 import random
+from z3 import *
+import itertools
 
-sudoku = '''
+txt = '''
 Grid 01
 003020600
 900305001
@@ -503,179 +505,198 @@ Grid 50
 000702000
 000008006'''
 
-class Sudoku():
-	"""docstring for Sudoku"""
+sudoku = [[[int(b) for b in a] for a in i.split('\n')[1:-1]] for i in txt.split('Grid')][1:]
+result = []
 
-	def __init__(self, sudo):
-		self.raw = sudo
-		self.score = []
+sudoku[49].append([int(b) for b in txt.split('\n')[-1]])
 
-	def __str__(self):
-		for row in self.raw:
-			print row
-		return ''
-
-	def quads(self):
-		l = [ self.raw[:3], self.raw[3:6], self.raw[6:]]
-		quads = [[[],[],[]],[[],[],[]],[[],[],[]]]
-		for y in range(3):
-			for x in range(3):
-				for l_m in l[y]:
-					quads[y][x].extend(l_m[3*x:3*x+3])
-		return quads
-
-	def scores(self,compute=True):
-		if compute:
-			oriz_score = [r.count(0) for r in self.raw]
-			vert_score = [[r[i] for r in self.raw].count(0) for i in range(9)]
-			quad_score = [[a.count(0) for a in r] for r in self.quads()]
-			scores = [[[] for a in range(9)] for i in range(9)]
-			for y in range(9):
-				for x in range(9):
-					if self.raw[y][x] != 0:
-						scores[y][x] = 0
-					else:
-						scores[y][x] = oriz_score[y] + vert_score[x] + quad_score[int(math.floor(x/3))][int(math.floor(y/3))]
-			for s in scores: print s
-
-	def alt_scores(self,matrix=0):
-		if matrix == 0:
-			matrix = self.raw
-		scores = [[0 for a in range(9)] for i in range(9)]
+for a,sudo in enumerate(sudoku):
+	# print a
+	s = Solver()
+	m = [[Int('z_{}_{}'.format(x,y)) for y in range(1,10)] for x in range(1,10)]
+	for x in range(9):
+		s.add(Distinct(m[x])) # the rows must have all different values
+		s.add(Distinct([m[i][x] for i in range(9)])) # and so should columns
 		for y in range(9):
-			for x in range(9):
-				if matrix[y][x] == 0:
-					for i in range(1,10):
-						matrix[y][x] = i
-						if self.check(matrix) == 0:
-							scores[y][x] += 1
-						matrix[y][x] = 0
-		self.print_matrix(scores,title='Scores')
+			# print x,y,len(sudo[x]),len(sudo)
+			if sudo[x][y] != 0:
+				s.add(m[x][y] == sudo[x][y]) 	# set the given values
+			s.add(And(m[x][y] <= 9,m[x][y] >= 1)) # set a max and min value
+
+	for x in range(0,9,3):
+		for y in range(0,9,3):
+			s.add(Distinct([m[x+i][y+j] for i, j in itertools.product(range(3), range(3))])) # values should be distinct also in groups
+
+	if s.check() == sat: # check if it's true
+		mod = s.model()
+		r = ""
+		for x in range(9):
+			r += "".join([str(mod.evaluate(m[x][y])) for y in range(9) ]) + '\n'
+		else:
+			result.append(r)
+	else:
+		print "Failed to solve"
+
+
+print math.fsum([int(a[:3]) for a in result])
 
 
 
-	def check(self,matrix=0):
-		nums = range(1,10)
-		ret = 0
 
-		if matrix == 0:
-			matrix = self.raw
 
-		def checkSeries(s):
-			ret = 0
-			if math.fsum(s) <= 45: # sum of all digits
-				for z in range(1,10): 
-					if s.count(z) > 1:
-						ret += 1
-			else:
-				ret+=1
-			return ret
+# Relics of a simpler time
 
-		for u in matrix:
-			ret += checkSeries(u)
+# class Sudoku():
+# 	"""docstring for Sudoku"""
 
-		for u in [[r[i] for r in matrix] for i in range(9)]:
-			ret += checkSeries(u)
+# 	def __init__(self, sudo):
+# 		self.raw = sudo
+# 		self.score = []
 
-		for a in self.quads():
-				for u in a:
-					ret += checkSeries(u)
+# 	def __str__(self):
+# 		for row in self.raw:
+# 			print row
+# 		return ''
 
-		return ret
+# 	def quads(self):
+# 		l = [ self.raw[:3], self.raw[3:6], self.raw[6:]]
+# 		quads = [[[],[],[]],[[],[],[]],[[],[],[]]]
+# 		for y in range(3):
+# 			for x in range(3):
+# 				for l_m in l[y]:
+# 					quads[y][x].extend(l_m[3*x:3*x+3])
+# 		return quads
 
-	def is_solved(self):
-		for y in range(9):
-			for x in range(9):
-				if self.raw[y][x] == 0:
-					return False
-		return True
+# 	def scores(self,compute=True):
+# 		if compute:
+# 			oriz_score = [r.count(0) for r in self.raw]
+# 			vert_score = [[r[i] for r in self.raw].count(0) for i in range(9)]
+# 			quad_score = [[a.count(0) for a in r] for r in self.quads()]
+# 			scores = [[[] for a in range(9)] for i in range(9)]
+# 			for y in range(9):
+# 				for x in range(9):
+# 					if self.raw[y][x] != 0:
+# 						scores[y][x] = 0
+# 					else:
+# 						scores[y][x] = oriz_score[y] + vert_score[x] + quad_score[int(math.floor(x/3))][int(math.floor(y/3))]
+# 			for s in scores: print s
 
-	def solve(self):
-		nums = set(range(1,10))
-		while True:
-			miss_y = [] #rows
-			miss_x = [] #columns
-			miss_q = [[[],[],[]],[[],[],[]],[[],[],[]]] #quads
-			for y in self.raw:
-				miss_y.append(list(nums - set(y)))
-			for x in [[r[i] for r in self.raw] for i in range(9)]:
-				miss_x.append(list(nums - set(x)))
-			for y,a in enumerate(self.quads()):
-				for x,q in enumerate(a):
-					miss_q[y][x] = list(nums - set(q))
+# 	def alt_scores(self,matrix=0):
+# 		if matrix == 0:
+# 			matrix = self.raw
+# 		scores = [[0 for a in range(9)] for i in range(9)]
+# 		for y in range(9):
+# 			for x in range(9):
+# 				if matrix[y][x] == 0:
+# 					for i in range(1,10):
+# 						matrix[y][x] = i
+# 						if self.check(matrix) == 0:
+# 							scores[y][x] += 1
+# 						matrix[y][x] = 0
+# 		self.print_matrix(scores,title='Scores')
 
-			n = 0
 
-			for y in range(9):
-				for x in range(9):
-					m = set.intersection(set(miss_q[int(math.floor(y/3))][int(math.floor(x/3))]),set(miss_y[y]),set(miss_x[x]))
-					if len(m) == 1 and self.raw[y][x] == 0:
-						self.raw[y][x] = list(m)[0]
-						print y,x,m
-						n += 1
 
-			for y in self.raw:
-				if n > 0:
-					if y.count(0) > 0:
-						break
-			else:
-				return self
+# 	def check(self,matrix=0):
+# 		nums = range(1,10)
+# 		ret = 0
 
-	def randomTry(self):
-		while True:
-			matrix = self.raw
-			for y in range(9):
-				for x in range(9):
-					if matrix[y][x] == 0:
-						while True:
-							matrix[y][x] = random.randint(1,9)
-							if self.check(matrix) == 0:
-								break
-			if self.check(matrix) == 0:
-				print matrix
-				print "done"
-				break
+# 		if matrix == 0:
+# 			matrix = self.raw
 
-	def print_matrix(self,matrix=0,title=''):
-		if matrix == 0:
-			matrix = self.raw
+# 		def checkSeries(s):
+# 			ret = 0
+# 			if math.fsum(s) <= 45: # sum of all digits
+# 				for z in range(1,10): 
+# 					if s.count(z) > 1:
+# 						ret += 1
+# 			else:
+# 				ret+=1
+# 			return ret
+
+# 		for u in matrix:
+# 			ret += checkSeries(u)
+
+# 		for u in [[r[i] for r in matrix] for i in range(9)]:
+# 			ret += checkSeries(u)
+
+# 		for a in self.quads():
+# 				for u in a:
+# 					ret += checkSeries(u)
+
+# 		if ret == True:
+# 			return Z3_L_TRUE
+# 		else:
+# 			return Z3_L_FALSE
+
+# 	def is_solved(self):
+# 		for y in range(9):
+# 			for x in range(9):
+# 				if self.raw[y][x] == 0:
+# 					return False
+# 		return True
+
+# 	def solve(self):
+# 		nums = set(range(1,10))
+# 		while True:
+# 			miss_y = [] #rows
+# 			miss_x = [] #columns
+# 			miss_q = [[[],[],[]],[[],[],[]],[[],[],[]]] #quads
+# 			for y in self.raw:
+# 				miss_y.append(list(nums - set(y)))
+# 			for x in [[r[i] for r in self.raw] for i in range(9)]:
+# 				miss_x.append(list(nums - set(x)))
+# 			for y,a in enumerate(self.quads()):
+# 				for x,q in enumerate(a):
+# 					miss_q[y][x] = list(nums - set(q))
+
+# 			n = 0
+
+# 			for y in range(9):
+# 				for x in range(9):
+# 					m = set.intersection(set(miss_q[int(math.floor(y/3))][int(math.floor(x/3))]),set(miss_y[y]),set(miss_x[x]))
+# 					if len(m) == 1 and self.raw[y][x] == 0:
+# 						self.raw[y][x] = list(m)[0]
+# 						print y,x,m
+# 						n += 1
+
+# 			for y in self.raw:
+# 				if n > 0:
+# 					if y.count(0) > 0:
+# 						break
+# 			else:
+# 				return self
+
+# 	def randomTry(self):
+# 		while True:
+# 			matrix = self.raw
+# 			for y in range(9):
+# 				for x in range(9):
+# 					if matrix[y][x] == 0:
+# 						while True:
+# 							matrix[y][x] = random.randint(1,9)
+# 							if self.check(matrix) == 0:
+# 								break
+# 			if self.check(matrix) == 0:
+# 				print matrix
+# 				print "done"
+# 				break
+
+# 	def print_matrix(self,matrix=0,title=''):
+# 		if matrix == 0:
+# 			matrix = self.raw
 
 		
-		print '\n' + title + '\n'
+# 		print '\n' + title + '\n'
 
-		for y in range(9):
-			s = ''
-			for x in range(9):
-				if matrix[y][x] == 0:
-					s += '\033[1;38m' + str(matrix[y][x]) + '\033[1;m '
-				else:
-					s += '\033[1;32m' + str(matrix[y][x]) + '\033[1;m '
-			print s
-
-
-
-		
-			
-
-
-sudoku = [Sudoku([[int(b) for b in a] for a in i.split('\n')[1:-1]]) for i in sudoku.split('Grid')][1:]
-
-s = sudoku[2]
-s.print_matrix(title='Sudoku')
-s.solve()
-s.alt_scores()
-
-
-
-		
-
-
-
-
-
-
-
-
+# 		for y in range(9):
+# 			s = ''
+# 			for x in range(9):
+# 				if matrix[y][x] == 0:
+# 					s += '\033[1;38m' + str(matrix[y][x]) + '\033[1;m '
+# 				else:
+# 					s += '\033[1;32m' + str(matrix[y][x]) + '\033[1;m '
+# 			print s
 
 
 
